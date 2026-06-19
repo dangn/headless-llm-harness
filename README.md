@@ -16,6 +16,13 @@ stderr. Companion to:
 
 Zero npm dependencies (native `fetch`, `util.parseArgs`, `fs.glob`). Node ≥ 22.
 
+## Requirements
+
+- **Node ≥ 22** — native `fetch`, `util.parseArgs`, `fs.glob`.
+- **`OPENROUTER_API_KEY`** — https://openrouter.ai/keys
+- **ripgrep (`rg`)** — recommended. The `grep` tool shells out to it; if absent,
+  `grep` returns a hint and you fall back to `list_dir` + `read_file`.
+
 ## Install
 
 ```bash
@@ -38,6 +45,19 @@ council --council "is the auth refactor in this repo safe?"   # panel + chair
 council --mode build "make test/auth.test.js pass"            # writes + runs
 git diff | council --mode review "review this diff"           # seed via stdin
 ```
+
+## Output
+
+The **final answer goes to stdout**; the agentic trace and a one-line header
+(`model · mode · sandbox · time · cost`) go to **stderr**. That keeps stdout
+clean for piping or capture by a calling agent:
+
+```bash
+answer=$(council --mode ask -q "what does config.js export?")
+```
+
+`-q` / `--quiet` suppresses the header so stdout is answer-only. A non-zero exit
+code means the run failed (bad model id, provider error, no API key, …).
 
 ## Modes (`--mode`, default `plan`)
 
@@ -133,3 +153,7 @@ npm test            # node --test (offline unit tests; no API calls)
 
 The binary is a single file (`bin/council`) with an `if (require.main === module)`
 guard, so the test suite `require()`s its internals directly.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
