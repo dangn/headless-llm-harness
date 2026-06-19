@@ -1,0 +1,28 @@
+{
+  "name": "headless-llm-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "council — a headless, agentic, model-agnostic LLM harness over OpenRouter with local-file tool access and a multi-model council mode. Built to be shelled out to by other agents (e.g. Claude Code).",
+  "bin": {
+    "council": "bin/council"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "council": "node bin/council"
+  },
+  "keywords": [
+    "llm",
+    "openrouter",
+    "agent",
+    "cli",
+    "headless",
+    "code-review",
+    "cross-check"
+  ],
+  "license": "MIT",
+  "author": "Dang"
+}
