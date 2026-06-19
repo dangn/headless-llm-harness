@@ -5,14 +5,11 @@
 Unlike a prompt-runner that only *submits* text, `council` gives the model a
 tool loop so it **navigates the codebase itself** (read / glob / grep, and under
 `--sandbox write`: edit / write / run), and can convene a **multi-model council**
-that fans out to a panel and reconciles to one answer.
+that fans out to a panel of models and reconciles to one answer.
 
-It's built to be **shelled out to by other agents** (e.g. Claude Code) the same
-way you'd call `codex` or `xcheck` — non-interactive, answer to stdout, trace to
-stderr. Companion to:
-
-- **`xcheck`** — single-shot OpenRouter review (submit a diff/file, get findings). `council` is its agentic sibling.
-- **`codex`** — single-model agentic CLI. `council` adds model-of-your-choice + a council mode.
+It runs **headless** — non-interactive, the answer to stdout and the trace to
+stderr — so it drops cleanly into scripts and pipelines, or into another agent
+(e.g. Claude Code) that shells out to it.
 
 Zero npm dependencies (native `fetch`, `util.parseArgs`, `fs.glob`). Node ≥ 22.
 
