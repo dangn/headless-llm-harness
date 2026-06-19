@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const cp = require('node:child_process');
 
-const { makeGuard, makeTools } = require('../bin/council');
+const { makeGuard, makeTools, buildProvider } = require('../bin/council');
 
 let ROOT, guard, ro, rw;
 
@@ -100,6 +100,30 @@ test('read-only tools never expose write/run', () => {
   assert.equal(ro.write_file, undefined);
   assert.equal(ro.edit_file, undefined);
   assert.equal(ro.run, undefined);
+});
+
+test('buildProvider: no providers ⇒ prior default (allow_fallbacks:false, no order)', () => {
+  assert.deepEqual(buildProvider(undefined, undefined, false), { allow_fallbacks: false });
+  assert.deepEqual(buildProvider('', '', false), { allow_fallbacks: false });
+});
+
+test('buildProvider: primary + backup become an ordered list', () => {
+  assert.deepEqual(
+    buildProvider('deepinfra', 'novita,fireworks', false),
+    { allow_fallbacks: false, order: ['deepinfra', 'novita', 'fireworks'] },
+  );
+});
+
+test('buildProvider: multiple primaries keep order, before backups', () => {
+  assert.deepEqual(
+    buildProvider('openai,azure', 'together', true),
+    { allow_fallbacks: true, order: ['openai', 'azure', 'together'] },
+  );
+});
+
+test('buildProvider: allow_fallbacks toggles strict vs open routing', () => {
+  assert.equal(buildProvider('openai', '', false).allow_fallbacks, false);
+  assert.equal(buildProvider('openai', '', true).allow_fallbacks, true);
 });
 
 test('grep finds matches (skipped if ripgrep is absent)', async (t) => {

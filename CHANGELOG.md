@@ -2,6 +2,19 @@
 
 All notable changes to `council` are recorded here.
 
+## [0.2.0] — 2026-06-19 14:35 PT
+
+### Added
+- **OpenRouter provider routing** via `--provider p1,p2` (primary) and
+  `--backup-provider p3,p4` (backup), which combine into one ordered
+  `provider.order` preference list. `--allow-fallbacks` (default off) toggles
+  strict ("only the named providers, in order, or error") vs open ("prefer
+  these, then anyone"). Applies to every model call — single-model, council
+  members, and the chair. Env: `COUNCIL_PROVIDER`, `COUNCIL_BACKUP_PROVIDER`,
+  `COUNCIL_ALLOW_FALLBACKS`. The run header shows the active routing
+  (`providers=deepinfra>novita>*`). Field names verified against the live
+  OpenRouter API (`provider.order` + `allow_fallbacks`). 4 new tests (16 total).
+
 ## [0.1.0] — 2026-06-19 14:05 PT
 
 Initial release. Extracted `~/bin/council` into a standalone project

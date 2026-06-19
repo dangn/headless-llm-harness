@@ -70,6 +70,17 @@ const die = (msg, code = 1) => { process.stderr.write(`council: ${msg}\n`); proc
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}\n…[truncated ${s.length - n} bytes]` : s);
 const csv = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+// OpenRouter provider routing. primary + backup become an ordered preference
+// list (provider.order); allow_fallbacks=false means "only these, in this order"
+// (errors if none serve the model), true means "prefer these, then anyone".
+// No providers + allowFallbacks=false ⇒ {allow_fallbacks:false} = the prior default.
+const buildProvider = (primary, backup, allowFallbacks) => {
+  const order = [...csv(primary), ...csv(backup)];
+  const p = { allow_fallbacks: !!allowFallbacks };
+  if (order.length) p.order = order;
+  return p;
+};
+
 const MODES = {
   ask:    { sandbox: 'read-only', system:
     'You are a senior engineer answering a question about a codebase. Use the tools to read the actual code before answering — never guess. Answer concretely and concisely, citing file:line for every claim. If the answer is not determinable from the code, say so.' },
@@ -351,7 +362,7 @@ const callOR = async (body, label) => {
 // ---------------------------------------------------------------------------
 // One agentic tool loop for a single model.
 // ---------------------------------------------------------------------------
-const runAgent = async ({ model, effort, system, user, tools, maxSteps, label }) => {
+const runAgent = async ({ model, effort, system, user, tools, maxSteps, label, provider }) => {
   const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
   let cost = 0;
   try { return await agentLoop(); }
@@ -360,7 +371,7 @@ const runAgent = async ({ model, effort, system, user, tools, maxSteps, label })
   async function agentLoop() {
   for (let step = 0; step < maxSteps; step++) {
     const body = {
-      model, messages, provider: { allow_fallbacks: false },
+      model, messages, provider,
       tools: tools.schemas, usage: { include: true },
     };
     if (effort && effort !== 'none') body.reasoning = { effort };
@@ -394,7 +405,7 @@ const runAgent = async ({ model, effort, system, user, tools, maxSteps, label })
   // forces a text answer.
   const json = await callOR({ model, messages: [...messages,
     { role: 'user', content: 'Step budget reached. Give your best final answer now using what you have gathered.' }],
-    provider: { allow_fallbacks: false }, tools: tools.schemas, tool_choice: 'none', usage: { include: true } }, label || model);
+    provider, tools: tools.schemas, tool_choice: 'none', usage: { include: true } }, label || model);
   cost += json.usage?.cost || 0;
   return { text: json.choices?.[0]?.message?.content || '(no content)', cost, steps: maxSteps, capped: true };
   }
@@ -403,12 +414,12 @@ const runAgent = async ({ model, effort, system, user, tools, maxSteps, label })
 // ---------------------------------------------------------------------------
 // Council: each member runs its own tool loop (read-only), chair reconciles.
 // ---------------------------------------------------------------------------
-const runCouncil = async ({ panel, chair, effort, system, user, root, maxSteps }) => {
+const runCouncil = async ({ panel, chair, effort, system, user, root, maxSteps, provider }) => {
   process.stderr.write(`[council] panel: ${panel.join(', ')}  ·  chair: ${chair}\n`);
   const members = await Promise.all(panel.map(async (model) => {
     const tools = makeTools(root, makeGuard(root), { write: false }); // council is advisory → read-only
     try {
-      const r = await runAgent({ model, effort, system, user, tools, maxSteps, label: model.split('/').pop() });
+      const r = await runAgent({ model, effort, system, user, tools, maxSteps, label: model.split('/').pop(), provider });
       return { model, ...r };
     } catch (e) {
       process.stderr.write(`[council] member ${model} failed: ${e.message}\n`);
@@ -425,7 +436,7 @@ const runCouncil = async ({ panel, chair, effort, system, user, root, maxSteps }
   const chairUser = `ORIGINAL TASK:\n${user}\n\nMEMBER RESPONSES:\n\n${memberBlock}`;
   const json = await callOR({ model: chair, messages: [
     { role: 'system', content: chairSystem }, { role: 'user', content: chairUser }],
-    provider: { allow_fallbacks: false }, usage: { include: true },
+    provider, usage: { include: true },
     ...(effort && effort !== 'none' ? { reasoning: { effort } } : {}) }, `chair:${chair}`);
   const cost = members.reduce((s, m) => s + (m.cost || 0), 0) + (json.usage?.cost || 0);
   return { text: json.choices?.[0]?.message?.content || '(no content)', cost, members };
@@ -472,6 +483,14 @@ COUNCIL
   --panel m1,m2,m3         panel model ids   (default: ${DEFAULT_PANEL.join(', ')})
   --chair MODEL            synthesizer       (default: ${DEFAULT_CHAIR})
 
+PROVIDER ROUTING (OpenRouter — applies to every model call: members + chair)
+  --provider p1,p2         primary upstream provider(s), tried in this order
+  --backup-provider p3,p4  backup provider(s), tried after the primaries
+  --allow-fallbacks        if all named providers fail, allow any other (default: off)
+                           (off = strict: only the named providers, in order)
+  slugs are OpenRouter provider ids, e.g. openai, anthropic, together, deepinfra,
+  fireworks, novita — see a model's providers at openrouter.ai/<model>
+
 MODEL / SCOPE
   -m, --model MODEL        single-model id   (default: ${DEFAULT_MODEL})
   -e, --effort LEVEL       low|medium|high|none   (default: high)
@@ -482,6 +501,7 @@ MODEL / SCOPE
   -h, --help
 
 ENV   OPENROUTER_API_KEY (required) · COUNCIL_MODEL · COUNCIL_PANEL · COUNCIL_CHAIR
+      · COUNCIL_PROVIDER · COUNCIL_BACKUP_PROVIDER · COUNCIL_ALLOW_FALLBACKS
 
 SAFETY  read_file/list_dir/glob/grep/write_file/edit_file are confined to --root
         (symlink-escape + no-follow-write guarded). \`run\` and writes need
@@ -495,7 +515,9 @@ EXAMPLES
   council "plan adding rate limiting to the /chat route"
   council --mode review -f src/db.js "find SQLi and race conditions"
   council --council "is the auth refactor in this repo safe to ship?"
-  council --mode build --root . "make the failing test in test/auth.test.js pass"`;
+  council --mode build --root . "make the failing test in test/auth.test.js pass"
+  council -m deepseek/deepseek-chat --provider deepinfra --backup-provider novita,fireworks "explain db.js"
+  council --provider openai --allow-fallbacks "summarize this module"`;
 
 // ---------------------------------------------------------------------------
 const main = async () => {
@@ -509,6 +531,9 @@ const main = async () => {
       council: { type: 'boolean', default: false },
       panel: { type: 'string' },
       chair: { type: 'string', default: DEFAULT_CHAIR },
+      provider: { type: 'string' },
+      'backup-provider': { type: 'string' },
+      'allow-fallbacks': { type: 'boolean', default: false },
       root: { type: 'string', default: process.cwd() },
       'max-steps': { type: 'string' },
       files: { type: 'string', short: 'f' },
@@ -530,6 +555,13 @@ const main = async () => {
   const isCouncil = o.council || !!o.panel;
   const sandbox = isCouncil ? 'read-only' : (o.sandbox || mode.sandbox);
   if (!['read-only', 'write'].includes(sandbox)) die(`--sandbox must be read-only|write`, 2);
+
+  // OpenRouter provider routing (applies to every model call: members + chair).
+  const provider = buildProvider(
+    o.provider ?? process.env.COUNCIL_PROVIDER,
+    o['backup-provider'] ?? process.env.COUNCIL_BACKUP_PROVIDER,
+    o['allow-fallbacks'] || process.env.COUNCIL_ALLOW_FALLBACKS === 'true',
+  );
   const caps = { write: sandbox === 'write' };
   const maxSteps = o['max-steps'] ? parseInt(o['max-steps'], 10) : MAX_STEPS;
 
@@ -558,23 +590,26 @@ const main = async () => {
 
   const t0 = Date.now();
   let out;
+  const provTag = provider.order
+    ? ` · providers=${provider.order.join('>')}${provider.allow_fallbacks ? '>*' : ''}`
+    : '';
   if (isCouncil) {
     const panel = o.panel ? csv(o.panel) : DEFAULT_PANEL;
-    out = await runCouncil({ panel, chair: o.chair, effort: o.effort, system: mode.system, user, root, maxSteps });
+    out = await runCouncil({ panel, chair: o.chair, effort: o.effort, system: mode.system, user, root, maxSteps, provider });
   } else {
     const model = o.model || DEFAULT_MODEL;
     const tools = makeTools(root, makeGuard(root), caps);
-    if (!o.quiet) process.stderr.write(`[council] ${model} · mode=${o.mode} · sandbox=${sandbox}\n`);
-    out = await runAgent({ model, effort: o.effort, system: mode.system, user, tools, maxSteps, label: model.split('/').pop() });
+    if (!o.quiet) process.stderr.write(`[council] ${model} · mode=${o.mode} · sandbox=${sandbox}${provTag}\n`);
+    out = await runAgent({ model, effort: o.effort, system: mode.system, user, tools, maxSteps, label: model.split('/').pop(), provider });
   }
 
   if (!o.quiet) {
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     const tag = isCouncil ? `council[${(o.panel ? csv(o.panel) : DEFAULT_PANEL).length}]→${o.chair}` : (o.model || DEFAULT_MODEL);
-    process.stderr.write(`── council · ${tag} · mode=${o.mode} · sandbox=${sandbox} · ${secs}s · $${(out.cost || 0).toFixed(4)} ──\n`);
+    process.stderr.write(`── council · ${tag} · mode=${o.mode} · sandbox=${sandbox}${provTag} · ${secs}s · $${(out.cost || 0).toFixed(4)} ──\n`);
   }
   process.stdout.write(out.text + '\n');
 };
 
 if (require.main === module) main().catch((e) => die(e.message));
-else module.exports = { makeGuard, makeTools, callOR, runAgent, runCouncil }; // for tests
+else module.exports = { makeGuard, makeTools, callOR, runAgent, runCouncil, buildProvider }; // for tests

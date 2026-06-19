@@ -74,18 +74,46 @@ chair = `gemini-3.1-pro-preview`. A failed member is isolated; the panel proceed
 ## Flags
 
 ```
--m, --model MODEL      single-model id              (default: gemini-3.1-pro-preview)
--e, --effort LEVEL     low|medium|high|none         (default: high)
---root DIR             workspace tools are confined to (default: cwd)
---max-steps N          tool-call iterations per agent (default: 30)
--f, --files a,b        seed files injected into the prompt (model can read more)
---panel m1,m2,m3       council panel ids
---chair MODEL          council synthesizer
--q, --quiet            print only the final answer
+-m, --model MODEL        single-model id            (default: gemini-3.1-pro-preview)
+-e, --effort LEVEL       low|medium|high|none       (default: high)
+--root DIR               workspace tools are confined to (default: cwd)
+--max-steps N            tool-call iterations per agent (default: 30)
+-f, --files a,b          seed files injected into the prompt (model can read more)
+--panel m1,m2,m3         council panel ids
+--chair MODEL            council synthesizer
+--provider p1,p2         primary OpenRouter provider(s), tried in order
+--backup-provider p3,p4  backup provider(s), tried after the primaries
+--allow-fallbacks        allow any other provider if all named ones fail (default: off)
+-q, --quiet              print only the final answer
 -h, --help
 ```
 
-Env: `OPENROUTER_API_KEY` (required) · `COUNCIL_MODEL` · `COUNCIL_PANEL` · `COUNCIL_CHAIR`.
+Env: `OPENROUTER_API_KEY` (required) · `COUNCIL_MODEL` · `COUNCIL_PANEL` ·
+`COUNCIL_CHAIR` · `COUNCIL_PROVIDER` · `COUNCIL_BACKUP_PROVIDER` ·
+`COUNCIL_ALLOW_FALLBACKS`.
+
+## Provider routing
+
+For models served by more than one upstream, pin which provider serves the
+request (and in what order) via OpenRouter [provider routing][pr]. Primary and
+backup combine into one ordered preference list:
+
+```bash
+# try DeepInfra first, then Novita, then Fireworks; fail if none can serve it
+council -m deepseek/deepseek-chat --provider deepinfra --backup-provider novita,fireworks "..."
+
+# prefer OpenAI, but allow any other provider if it's unavailable
+council --provider openai --allow-fallbacks "..."
+```
+
+`--allow-fallbacks` off (default) is **strict**: only the named providers, in
+order, or the call errors — it never silently reroutes. On means "prefer these,
+then anyone". Routing applies to every model call, including council members and
+the chair. Slugs are OpenRouter provider ids (`openai`, `anthropic`, `together`,
+`deepinfra`, `fireworks`, `novita`, …) — see a model's providers at
+`openrouter.ai/<model>`.
+
+[pr]: https://openrouter.ai/docs/features/provider-routing
 
 ## Safety
 
