@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-// council — an agentic OpenRouter harness that Claude Code (or you) can shell
-// out to for plan / build / test, with REAL local-file access (the model reads,
-// greps, and globs the tree itself via a tool loop) and an optional multi-model
-// "LLM council" mode that fans out to a panel and reconciles.
+// council — an agentic OpenRouter harness that you (or another agent, e.g.
+// Claude Code) can shell out to for plan / build / test, with REAL local-file
+// access: the model reads, greps, and globs the tree itself via a tool loop,
+// and — under --sandbox write — edits files and runs commands confined to
+// --root. An optional multi-model "LLM council" mode fans out to a panel and
+// reconciles to one answer.
 //
-// Companion to `codex` (OpenAI) and `xcheck` (single-shot OpenRouter review).
-// Where xcheck only submits a diff/file/stdin, council gives the chosen model a
-// tool loop so it can navigate the codebase, and — under --sandbox write — edit
-// files and run commands confined to --root.
+// Runs headless: answer to stdout, trace to stderr, non-interactive.
 //
 // Zero npm deps: native fetch, util.parseArgs, fs/child_process. Node >= 22.
 // Auth: OPENROUTER_API_KEY (https://openrouter.ai/keys).
@@ -21,7 +20,7 @@ const { spawn } = require('node:child_process');
 const { parseArgs } = require('node:util');
 
 // ---------------------------------------------------------------------------
-// Defaults — match Dang's existing stack (xcheck / codex model ids).
+// Defaults — current-generation OpenRouter model ids.
 // ---------------------------------------------------------------------------
 const OR_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = process.env.COUNCIL_MODEL || 'google/gemini-3.1-pro-preview';
@@ -443,7 +442,7 @@ const runCouncil = async ({ panel, chair, effort, system, user, root, maxSteps, 
 };
 
 // ---------------------------------------------------------------------------
-// stdin (seed material), like xcheck
+// stdin (seed material)
 // ---------------------------------------------------------------------------
 // Drain piped stdin, but NEVER block: a non-TTY idle pipe (headless Bash/CI/editor
 // integration) has no EOF, so give up if nothing arrives, and cap total bytes.
